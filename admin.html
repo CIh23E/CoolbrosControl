@@ -1,0 +1,192 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CoolBros Admin Login</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+body {
+  background:#101713;color:white;font-family:Arial,sans-serif;
+  display:grid;place-items:center;min-height:100vh;margin:0;
+}
+.box {
+  background:#1b2921;padding:25px;border-radius:15px;
+  width:85%;max-width:350px;
+}
+h2{color:#55e69a}
+input,button {
+  box-sizing:border-box;width:100%;padding:13px;
+  margin-top:12px;border-radius:8px;border:none;
+}
+input{background:#e9eee9}
+button{background:#27b86c;color:white;font-weight:bold}
+a{color:#55e69a;cursor:pointer}
+#status{color:#b9d9c5;overflow-wrap:anywhere}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="box">
+  <h2>COOLBROS CONTROL</h2>
+
+  <div id="loginBox">
+    <p>Admin Login</p>
+    <input id="email" type="email" placeholder="Email admin">
+    <input id="password" type="password" placeholder="Password admin">
+    <button onclick="login()">LOGIN</button>
+    <p><a onclick="showForgot()">Lupa Password?</a></p>
+  </div>
+
+  <div id="forgotBox" class="hidden">
+    <p>Reset Password</p>
+    <input id="resetEmail" type="email" placeholder="Masukkan Gmail admin">
+    <button onclick="sendReset()">KIRIM LINK RESET</button>
+    <p><a onclick="showLogin()">Kembali ke Login</a></p>
+  </div>
+
+  <div id="newPasswordBox" class="hidden">
+    <p>Buat Password Baru</p>
+    <input id="newPassword" type="password" placeholder="Password baru">
+    <input id="confirmPassword" type="password" placeholder="Ulangi password baru">
+    <button onclick="savePassword()">SIMPAN PASSWORD</button>
+  </div>
+
+  <p id="status">Backend: Not connected</p>
+</div>
+
+<script>
+const SUPABASE_URL =
+  "https://jvzuynjqhyajmrziijqo.supabase.co";
+
+const SUPABASE_KEY =
+  "sb_publishable_Nzy976_RjjUOqCkvp28rsQ_H0LtVpc5";
+
+const client = window.supabase.createClient(
+  SUPABASE_URL, SUPABASE_KEY
+);
+
+const statusText = document.getElementById("status");
+
+function showBox(id) {
+  ["loginBox","forgotBox","newPasswordBox"].forEach(box => {
+    document.getElementById(box).classList.add("hidden");
+  });
+  document.getElementById(id).classList.remove("hidden");
+}
+
+function showLogin() {
+  showBox("loginBox");
+}
+
+function showForgot() {
+  document.getElementById("resetEmail").value =
+    document.getElementById("email").value;
+  showBox("forgotBox");
+}
+
+async function login() {
+  statusText.textContent = "Memeriksa login...";
+
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+
+  const { data, error } = await client.auth.signInWithPassword({
+    email, password
+  });
+
+  if (error) {
+    statusText.textContent = "Login gagal: " + error.message;
+    return;
+  }
+
+  await verifyAdmin(data.session.access_token);
+}
+
+async function verifyAdmin(token) {
+  statusText.textContent = "Memeriksa akses admin...";
+
+  try {
+    const response = await fetch(
+      SUPABASE_URL + "/functions/v1/coolbros-admin",
+      {
+        method: "GET",
+        headers: {
+          "apikey": SUPABASE_KEY,
+          "Authorization": "Bearer " + token
+        }
+      }
+    );
+
+    const result = await response.json();
+
+    statusText.textContent =
+      response.ok && result.success
+      ? "CONNECTED: ADMIN VERIFIED"
+      : "Backend error: " + (result.message || response.status);
+
+  } catch (error) {
+    statusText.textContent = "Koneksi gagal: " + error.message;
+  }
+}
+
+async function sendReset() {
+  const email = document.getElementById("resetEmail").value.trim();
+
+  if (!email) {
+    statusText.textContent = "Masukkan Gmail terlebih dahulu.";
+    return;
+  }
+
+  statusText.textContent = "Mengirim link reset...";
+
+  const redirectTo =
+    window.location.origin + window.location.pathname;
+
+  const { error } = await client.auth.resetPasswordForEmail(email, {
+    redirectTo
+  });
+
+  statusText.textContent = error
+    ? "Gagal: " + error.message
+    : "Jika email terdaftar, link reset akan dikirim. Periksa Gmail kamu.";
+}
+
+client.auth.onAuthStateChange((event) => {
+  if (event === "PASSWORD_RECOVERY") {
+    showBox("newPasswordBox");
+    statusText.textContent = "Verifikasi berhasil. Buat password baru.";
+  }
+});
+
+async function savePassword() {
+  const password = document.getElementById("newPassword").value;
+  const confirm = document.getElementById("confirmPassword").value;
+
+  if (password.length < 8) {
+    statusText.textContent = "Password minimal 8 karakter.";
+    return;
+  }
+
+  if (password !== confirm) {
+    statusText.textContent = "Konfirmasi password tidak cocok.";
+    return;
+  }
+
+  statusText.textContent = "Menyimpan password baru...";
+
+  const { error } = await client.auth.updateUser({ password });
+
+  if (error) {
+    statusText.textContent = "Gagal: " + error.message;
+    return;
+  }
+
+  statusText.textContent = "Password berhasil diubah. Silakan login.";
+  await client.auth.signOut();
+  showLogin();
+}
+</script>
+</body>
+</html>
